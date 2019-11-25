@@ -9,11 +9,11 @@ WASp
    pip install git+https://github.com/LoicGrobol/wasp.git
    ```
 
-2. Run it on your tsv file
+2. Run it on your conll file
 
    ```bash
-   wasp myfile.tsv
+   wasp myfile.conll
    ```
 
-**W**eighted **A**ccuracy for **Sp**ans which has alomst nothing to do with what this does, help me
+**W**eighted **A**ccuracy for **Sp**ans which has almost nothing to do with what this does, help me
 find a better acronym.

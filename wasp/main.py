@@ -11,13 +11,20 @@ Options:
   --bio  	Use BIO mode instead of BILOU
   --gold-column <g>  	The indice of the column containing the gold labels [default: -1]
   --label-regex <r>  	A regular expression matching the labels [default: (?P<type>.*)_(?P<action>[BILOU])]
+  --score <s>  	The scoring mode, either "strict" for exact boundaries or "dice" for lenient matching
+  using the Sørensen-Dice coefficient [default: strict]
   --sys-column <s>  	The indice of the column containing the system labels [default: -2]
   --version     Show version.
 """
+import math
 import pprint
 import re
-from typing import Iterable, List, NamedTuple, Optional, Tuple
+from typing import Callable, Collection, Iterable, List, NamedTuple, Optional, Tuple
+
 from docopt import docopt
+import numpy as np
+from scipy.optimize import linear_sum_assignment
+
 from wasp import __version__
 
 
@@ -27,7 +34,36 @@ class TypedSpan(NamedTuple):
     type: Optional[str]
 
 
-def spans_from_labels(labels: Iterable[Tuple[str, Optional[str]]], bilou: bool = True):
+def exact_coef(a: TypedSpan, b: TypedSpan):
+    return 1.0 if a == b else 0.0
+
+
+def dice_coef(a: TypedSpan, b: TypedSpan):
+    if a.type != b.type:
+        return 0.0
+    return 2*max(min(a.end, b.end) - max(a.start, b.start), 0)/(a.end - a.start + b.end - b.start)
+
+
+def aligned_score(
+    gold: Collection[TypedSpan],
+    syst: Collection[TypedSpan],
+    score: Callable[[TypedSpan, TypedSpan], float],
+) -> Tuple[float, float, float]:
+    cost_matrix = np.array([[-score(g, s) for g in gold] for s in syst])
+    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+    total_score = -cost_matrix[row_ind, col_ind].sum()
+    pos = math.fsum(score(s, s) for s in syst)
+    tru = math.fsum(score(g, g) for g in gold)
+    return total_score, pos, tru
+
+
+SCORES = {
+    "strict": exact_coef,
+    "dice": dice_coef,
+}
+
+
+def spans_from_labels(labels: Iterable[Tuple[str, Optional[str]]], bilou: bool):
     """Extract a list of typed spans from labels."""
     spans: List[TypedSpan] = []
     current_start = None
@@ -68,6 +104,10 @@ def spans_from_labels(labels: Iterable[Tuple[str, Optional[str]]], bilou: bool =
             if current_start is not None:
                 raise ValueError(f"Invalid label at {i}: {label_action}")
             spans.append(TypedSpan(i, i + 1, label_type))
+    if current_start is not None:
+        if bilou:
+            raise ValueError("Unclosed segment")
+        spans.append(TypedSpan(current_start, i+1, current_type))
     return spans
 
 
@@ -88,7 +128,8 @@ def process_block(
     gold_column: int,
     syst_column: int,
     bilou: bool,
-) -> Tuple[int, int, int]:
+    score: Callable[[TypedSpan, TypedSpan], float],
+) -> Tuple[float, float, float]:
     gold_labels = []
     syst_labels = []
     for line in block:
@@ -110,11 +151,8 @@ def process_block(
         raise ValueError(
             f"Invalid sys label sequence:\n{pprint.pformat(list(enumerate(syst_labels)))}"
         ) from e
-    tru_pos = len(gold_spans.intersection(syst_spans))
-    tru = len(gold_spans)
-    pos = len(syst_spans)
 
-    return tru_pos, tru, pos
+    return aligned_score(gold_spans, syst_spans, score)
 
 
 def process_file(
@@ -123,9 +161,10 @@ def process_file(
     gold_column: int,
     syst_column: int,
     bilou: bool,
-) -> Tuple[int, int, int]:
-    current_block = []
-    tru_pos, tru, pos = 0, 0, 0
+    score: Callable[[TypedSpan, TypedSpan], float],
+) -> Tuple[float, float, float]:
+    current_block: List[str] = []
+    tru_pos, tru, pos = [], [], []
     for i, l in enumerate(lines, start=1):
         if not l:
             try:
@@ -135,22 +174,25 @@ def process_file(
                     gold_column=gold_column,
                     syst_column=syst_column,
                     bilou=bilou,
+                    score=score,
                 )
             except ValueError as e:
                 raise ValueError(
                     f"Invalid value in block starting at line {i-len(current_block)}"
                 ) from e
-            tru_pos += tp
-            tru += t
-            pos += p
+            tru_pos.append(tp)
+            tru.append(t)
+            pos.append(p)
             current_block = []
         else:
             current_block.append(l)
-    return tru_pos, tru, pos
+    return math.fsum(tru_pos), math.fsum(tru), math.fsum(pos)
 
 
 def main_entry_point(argv=None):
     arguments = docopt(__doc__, version=f"WASp {__version__}")
+    if arguments["--score"] is None:
+        arguments["--score"] = "strict"
     with open(arguments["<file-name>"]) as in_stream:
         tru_pos, tru, pos = process_file(
             (l.strip() for l in in_stream),
@@ -158,6 +200,7 @@ def main_entry_point(argv=None):
             gold_column=int(arguments["--gold-column"]),
             syst_column=int(arguments["--sys-column"]),
             bilou=not arguments["--bio"],
+            score=SCORES[arguments["--score"]]
         )
     p = tru_pos / pos
     r = tru_pos / tru

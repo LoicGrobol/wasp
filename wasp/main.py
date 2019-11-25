@@ -1,6 +1,7 @@
 """A scorer for BI[L]O[U] segmentations
 
 Usage:
+  wasp list
   wasp [options] <file-name>
 
 Arguments:
@@ -11,8 +12,7 @@ Options:
   --bio  	Use BIO mode instead of BILOU
   --gold-column <g>  	The indice of the column containing the gold labels [default: -1]
   --label-regex <r>  	A regular expression matching the labels [default: (?P<type>.*)_(?P<action>[BILOU])]
-  --score <s>  	The scoring mode, either "strict" for exact boundaries or "dice" for lenient matching
-  using the Sørensen-Dice coefficient [default: strict]
+  --score <s>  	The scoring function, use `wasp list-score` to get a list [default: strict]
   --sys-column <s>  	The indice of the column containing the system labels [default: -2]
   --version     Show version.
 """
@@ -195,6 +195,9 @@ def process_file(
 
 def main_entry_point(argv=None):
     arguments = docopt(__doc__, version=f"WASp {__version__}")
+    if arguments["list"]:
+        print("\n".join(SCORES.keys()))
+        return
     if arguments["--score"] is None:
         arguments["--score"] = "strict"
     with open(arguments["<file-name>"]) as in_stream:

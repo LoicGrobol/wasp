@@ -34,11 +34,11 @@ class TypedSpan(NamedTuple):
     type: Optional[str]
 
 
-def exact_coef(a: TypedSpan, b: TypedSpan):
+def exact_coef(a: TypedSpan, b: TypedSpan) -> float:
     return 1.0 if a == b else 0.0
 
 
-def dice_coef(a: TypedSpan, b: TypedSpan):
+def dice_coef(a: TypedSpan, b: TypedSpan) -> float:
     if a.type != b.type:
         return 0.0
     return 2*max(min(a.end, b.end) - max(a.start, b.start), 0)/(a.end - a.start + b.end - b.start)

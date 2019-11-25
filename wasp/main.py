@@ -41,7 +41,11 @@ def exact_coef(a: TypedSpan, b: TypedSpan) -> float:
 def dice_coef(a: TypedSpan, b: TypedSpan) -> float:
     if a.type != b.type:
         return 0.0
-    return 2*max(min(a.end, b.end) - max(a.start, b.start), 0)/(a.end - a.start + b.end - b.start)
+    return (
+        2
+        * max(min(a.end, b.end) - max(a.start, b.start), 0)
+        / (a.end - a.start + b.end - b.start)
+    )
 
 
 def aligned_score(
@@ -107,7 +111,7 @@ def spans_from_labels(labels: Iterable[Tuple[str, Optional[str]]], bilou: bool):
     if current_start is not None:
         if bilou:
             raise ValueError("Unclosed segment")
-        spans.append(TypedSpan(current_start, i+1, current_type))
+        spans.append(TypedSpan(current_start, i + 1, current_type))
     return spans
 
 
@@ -200,7 +204,7 @@ def main_entry_point(argv=None):
             gold_column=int(arguments["--gold-column"]),
             syst_column=int(arguments["--sys-column"]),
             bilou=not arguments["--bio"],
-            score=SCORES[arguments["--score"]]
+            score=SCORES[arguments["--score"]],
         )
     p = tru_pos / pos
     r = tru_pos / tru

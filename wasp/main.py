@@ -4,17 +4,15 @@ Usage:
   wasp [options] <file-name>
 
 Arguments:
-  <file-name>  	The file to score (CoNLL where the last two columns are gold and sys
-                BI[L]O[U] labels)
+  <file-name>  	The file to score (CoNLL with BI[L]O[U] labels)
 
 Options:
   -h --help     Show this screen.
+  --bio  	Use BIO mode instead of BILOU
+  --gold-column <g>  	The indice of the column containing the gold labels [default: -1]
   --label-regex <r>  	A regular expression matching the labels [default: (?P<type>.*)_(?P<action>[BILOU])]
-  --bio  	Use BIO mode
+  --sys-column <s>  	The indice of the column containing the system labels [default: -2]
   --version     Show version.
-
-Acceptable labels:
-This deals with eihe
 """
 import pprint
 import re
@@ -85,15 +83,19 @@ def process_label(label: str, label_regex) -> Tuple[str, Optional[str]]:
 
 
 def process_block(
-    block: Iterable[str], label_regex: str, bilou: bool
+    block: Iterable[str],
+    label_regex: str,
+    gold_column: int,
+    syst_column: int,
+    bilou: bool,
 ) -> Tuple[int, int, int]:
     gold_labels = []
     syst_labels = []
     for line in block:
-        *_, gold, syst = line.rsplit(maxsplit=2)
+        columns = line.split()
         try:
-            gold_labels.append(process_label(gold, label_regex))
-            syst_labels.append(process_label(syst, label_regex))
+            gold_labels.append(process_label(columns[gold_column], label_regex))
+            syst_labels.append(process_label(columns[syst_column], label_regex))
         except ValueError as e:
             raise ValueError(f"Invalid line {line!r}") from e
     try:
@@ -115,13 +117,25 @@ def process_block(
     return tru_pos, tru, pos
 
 
-def process_file(lines: Iterable[str], label_regex: str, bilou: bool):
+def process_file(
+    lines: Iterable[str],
+    label_regex: str,
+    gold_column: int,
+    syst_column: int,
+    bilou: bool,
+) -> Tuple[int, int, int]:
     current_block = []
     tru_pos, tru, pos = 0, 0, 0
-    for i, l in enumerate(lines):
+    for i, l in enumerate(lines, start=1):
         if not l:
             try:
-                tp, t, p = process_block(current_block, label_regex, bilou)
+                tp, t, p = process_block(
+                    current_block,
+                    label_regex=label_regex,
+                    gold_column=gold_column,
+                    syst_column=syst_column,
+                    bilou=bilou,
+                )
             except ValueError as e:
                 raise ValueError(
                     f"Invalid value in block starting at line {i-len(current_block)}"
@@ -141,6 +155,8 @@ def main_entry_point(argv=None):
         tru_pos, tru, pos = process_file(
             (l.strip() for l in in_stream),
             label_regex=arguments["--label-regex"],
+            gold_column=int(arguments["--gold-column"]),
+            syst_column=int(arguments["--sys-column"]),
             bilou=not arguments["--bio"],
         )
     p = tru_pos / pos
